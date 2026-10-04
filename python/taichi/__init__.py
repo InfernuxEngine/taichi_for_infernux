@@ -1,6 +1,6 @@
 # Modified by the Infernux project in 2026 for the private compiler frontend.
 #
-# This package is an implementation detail of ``Infernux.compute``.  Import the
+# This package is an implementation detail of ``infernux.compute``.  Import the
 # exact compiler surface instead of publishing Taichi's author/runtime API via
 # ``taichi.lang import *``.  The remaining lang modules are being separated
 # from field/SNode/ndarray ownership incrementally; they must not become a

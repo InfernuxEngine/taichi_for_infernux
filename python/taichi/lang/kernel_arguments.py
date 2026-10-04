@@ -1,7 +1,7 @@
 # Modified by Infernux in 2026: private compiler-relative imports.
 import inspect
 
-from Infernux._compiler.taichi._vendor import taichi
+from infernux._compiler.taichi._vendor import taichi
 from .._lib import core as _ti_core
 from . import impl
 from .any_array import AnyArray

@@ -1,6 +1,6 @@
 """Compile from the staged private frontend without an engine or GPU device.
 
-Pass the installed Infernux/_compiler/taichi/_vendor/taichi directory.
+Pass the installed infernux/_compiler/taichi/_vendor/taichi directory.
 """
 
 from pathlib import Path
@@ -12,7 +12,7 @@ import types
 import weakref
 
 frontend = Path(sys.argv[1]).resolve(strict=True)
-namespace = "Infernux._compiler.taichi._vendor.taichi"
+namespace = "infernux._compiler.taichi._vendor.taichi"
 parts = namespace.split(".")
 for length in range(1, len(parts)):
     name = ".".join(parts[:length])
@@ -161,7 +161,7 @@ assert loop_count(large_artifact) == 2
 del short_serial_loop, large_serial_loop
 assert not hasattr(runtime, 'kernels')
 assert not hasattr(affine, "grad")
-assert "Infernux.lib" not in sys.modules
+assert "infernux.lib" not in sys.modules
 assert "taichi" not in sys.modules
 
 # A kernel owns its native IR and keeps its Program alive, not the reverse.

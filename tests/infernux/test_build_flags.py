@@ -57,7 +57,7 @@ def test_private_frontend_install_excludes_retired_directories(tmp_path):
     ):
         result = subprocess.run(command, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
-    vendor = install / "Infernux/_compiler/taichi/_vendor/taichi"
+    vendor = install / "infernux/_compiler/taichi/_vendor/taichi"
     assert (vendor / "__init__.py").is_file()
     assert all(not (vendor / name).exists() for name in retired)
-    assert (install / "Infernux/_compiler/licenses/taichi/NOTICE").is_file()
+    assert (install / "infernux/_compiler/licenses/taichi/NOTICE").is_file()

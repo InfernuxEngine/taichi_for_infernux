@@ -27,7 +27,7 @@ and execute their output through Infernux's Vulkan backend.
 
 The active Python frontend no longer provides field/SNode storage owners,
 device-array constructors or a kernel launch runtime. Its imports stay inside
-`Infernux._compiler.taichi`; it does not claim the public `taichi` namespace.
+`infernux._compiler.taichi`; it does not claim the public `taichi` namespace.
 Numeric Matrix/Vector expressions and the IR needed for code generation remain.
 Kernel compilation consumes engine buffer type descriptions directly, without
 allocating placeholder NumPy arrays. Each entry point creates one forward kernel;

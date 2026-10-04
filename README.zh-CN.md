@@ -14,7 +14,7 @@ CPU 计算继续使用引擎的 Numba/llvmlite 路径；引擎和适用的 Playe
 
 裁剪和发行集成仍在进行中。引擎构建已经能将私有 Python 前端和原生 SPIR-V 编译模块直接安装到 wheel 目录；Windows 集成测试覆盖无 GPU 设备的内核编译，以及通过 Infernux Vulkan 后端执行编译结果。
 
-当前使用的 Python 前端已移除 field/SNode 存储管理、设备数组构造和内核执行运行时。导入限定在 `Infernux._compiler.taichi` 内部，不占用公共 `taichi` 包名；矩阵、向量数值表达式和代码生成所需的 IR 继续保留。
+当前使用的 Python 前端已移除 field/SNode 存储管理、设备数组构造和内核执行运行时。导入限定在 `infernux._compiler.taichi` 内部，不占用公共 `taichi` 包名；矩阵、向量数值表达式和代码生成所需的 IR 继续保留。
 
 独立 C-API、AOT 模块构建/加载器、CPU/LLVM/CUDA/AMDGPU/DirectX 代码生成与执行运行时、上游设备后端及旧数据容器，现已从源码删除，而非仅关闭选项。Python AOT/Graph 导出工具、Field 树构建器、自动微分作者入口及独立 Taichi 命令行也已移除。SPIR-V 编译器保留共享 IR 和能力/格式描述，不再带另一套 GPU 设备实现。共享 IR、旧 UI/工具和历史测试仍需继续裁剪；完整的多平台 wheel 与 Player 发行矩阵尚未验收。
 

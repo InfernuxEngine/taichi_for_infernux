@@ -1,7 +1,7 @@
 # Modified by Infernux in 2026: private compiler-relative imports.
 from .._lib.utils import ti_python_core as _ti_python_core
 
-from Infernux._compiler.taichi._vendor import taichi
+from infernux._compiler.taichi._vendor import taichi
 
 _type_factory = _ti_python_core.get_type_factory_instance()
 

@@ -13,14 +13,14 @@ function(infernux_compiler_output target)
         ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib/$<0:>"
         PDB_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/symbols/$<0:>")
     install(TARGETS ${target}
-        RUNTIME DESTINATION Infernux/_compiler/taichi/_vendor/taichi/_lib/core COMPONENT infernux_compiler
-        LIBRARY DESTINATION Infernux/_compiler/taichi/_vendor/taichi/_lib/core COMPONENT infernux_compiler)
+        RUNTIME DESTINATION infernux/_compiler/taichi/_vendor/taichi/_lib/core COMPONENT infernux_compiler
+        LIBRARY DESTINATION infernux/_compiler/taichi/_vendor/taichi/_lib/core COMPONENT infernux_compiler)
     # The temporary lowering implementation lives below Infernux's private
     # compiler namespace. It is not a top-level taichi package and is loaded
     # only while an Infernux kernel is compiled. Source-level pruning proceeds
     # from this working main path; authors never receive Taichi containers/API.
     install(DIRECTORY "${PROJECT_SOURCE_DIR}/python/taichi/"
-        DESTINATION Infernux/_compiler/taichi/_vendor/taichi
+        DESTINATION infernux/_compiler/taichi/_vendor/taichi
         COMPONENT infernux_compiler
         FILES_MATCHING PATTERN "*.py"
         PATTERN "__pycache__" EXCLUDE
@@ -58,5 +58,5 @@ function(infernux_compiler_output target)
     ]]
         COMPONENT infernux_compiler)
     install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/NOTICE"
-        DESTINATION Infernux/_compiler/licenses/taichi COMPONENT infernux_compiler)
+        DESTINATION infernux/_compiler/licenses/taichi COMPONENT infernux_compiler)
 endfunction()
