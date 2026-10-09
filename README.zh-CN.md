@@ -1,3 +1,11 @@
+## Infernux 维护分支
+
+本 fork 由 [Infernux Libraries](https://github.com/InfernuxEngine) 维护。
+`infernux-support` 是唯一持续维护的 Infernux 主干，也是默认分支。
+其他上游分支和标签仅保留作参考，不作为另外的 Infernux 发布线。
+
+---
+
 # Taichi for Infernux
 
 [English](README.md) · [Infernux 引擎](https://github.com/ChenlizheMe/Infernux) · [Taichi 上游](https://github.com/taichi-dev/taichi)

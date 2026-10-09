@@ -1,3 +1,14 @@
+## Infernux maintenance
+
+This fork is maintained by [Infernux Libraries](https://github.com/InfernuxEngine)
+for the [Infernux engine](https://github.com/ChenlizheMe/Infernux).
+`infernux-support` is the sole maintained Infernux mainline and the default
+branch. Other upstream branches and tags are reference snapshots, not
+additional Infernux release lines. Upstream documentation and attribution
+are retained below.
+
+---
+
 # Taichi for Infernux
 
 [中文](README.zh-CN.md) · [Infernux engine](https://github.com/ChenlizheMe/Infernux) · [Upstream Taichi](https://github.com/taichi-dev/taichi)
