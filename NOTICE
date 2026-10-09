@@ -6,7 +6,7 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 Original author and copyright notices are retained in the source.
 
 Infernux maintains this fork:
-https://github.com/ChenlizheMe/taichi_for_infernux
+https://github.com/InfernuxEngine/taichi_for_infernux
 https://github.com/ChenlizheMe/Infernux
 
 Infernux modifications begun in 2026 establish a JIT-only compiler build
