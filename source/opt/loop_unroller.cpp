@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "source/opt/decoration_manager.h"
 #include "source/opt/ir_builder.h"
 #include "source/opt/loop_utils.h"
 
@@ -888,6 +889,9 @@ void LoopUnrollerUtilsImpl::AssignNewResultIds(BasicBlock* basic_block) {
     // TODO(1841): Handle id overflow.
     inst.SetResultId(context_->TakeNextId());
     def_use_mgr->AnalyzeInstDef(&inst);
+    // Decorations belong to module IDs, not the cloned instruction body.
+    // Preserve arithmetic contracts such as NoContraction on the new ID.
+    context_->get_decoration_mgr()->CloneDecorations(old_id, inst.result_id());
 
     // Save the mapping of old_id -> new_id.
     state_.new_inst[old_id] = inst.result_id();
