@@ -1095,7 +1095,7 @@ DEFINE_BUILDER_CMP_OP(le, LessThanEqual);
 DEFINE_BUILDER_CMP_OP(gt, GreaterThan);
 DEFINE_BUILDER_CMP_OP(ge, GreaterThanEqual);
 
-#define DEFINE_BUILDER_CMP_UOP(_OpName, _Op)                               \
+#define DEFINE_BUILDER_CMP_UOP(_OpName, _Op, _FloatOp)                     \
   Value IRBuilder::_OpName(Value a, Value b) {                             \
     TI_ASSERT(a.stype.id == b.stype.id);                                   \
     const auto &bool_type = t_bool_; /* TODO: Only scalar supported now */ \
@@ -1105,12 +1105,12 @@ DEFINE_BUILDER_CMP_OP(ge, GreaterThanEqual);
       return make_value(spv::OpI##_Op, bool_type, a, b);                   \
     } else {                                                               \
       TI_ASSERT(is_real(a.stype.dt));                                      \
-      return make_value(spv::OpFOrd##_Op, bool_type, a, b);                \
+      return make_value(spv::_FloatOp, bool_type, a, b);                   \
     }                                                                      \
   }
 
-DEFINE_BUILDER_CMP_UOP(eq, Equal);
-DEFINE_BUILDER_CMP_UOP(ne, NotEqual);
+DEFINE_BUILDER_CMP_UOP(eq, Equal, OpFOrdEqual);
+DEFINE_BUILDER_CMP_UOP(ne, NotEqual, OpFUnordNotEqual);
 
 #define DEFINE_BUILDER_LOGICAL_OP(_OpName, _Op)                               \
   Value IRBuilder::_OpName(Value a, Value b) {                                \

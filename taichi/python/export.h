@@ -30,8 +30,4 @@ using py::literals::operator""_a;
 
 void export_lang(py::module &m);
 
-void export_math(py::module &m);
-
-void export_misc(py::module &m);
-
 }  // namespace taichi

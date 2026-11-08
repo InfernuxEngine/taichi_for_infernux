@@ -1029,7 +1029,9 @@ class ASTTransformer(Builder):
                     raise TaichiSyntaxError(f'"{type(node_op).__name__}" is only supported inside `ti.static`.')
                 else:
                     raise TaichiSyntaxError(f'"{type(node_op).__name__}" is not supported in Taichi kernels.')
-            val = ti_ops.logical_and(val, op(l, r))
+            # A single comparison is already a predicate. Starting it with
+            # logical_and(True, ...) needlessly creates a mutable local slot.
+            val = op(l, r) if i == 0 else ti_ops.logical_and(val, op(l, r))
         if not isinstance(val, (bool, np.bool_)):
             val = ti_ops.cast(val, primitive_types.u1)
         node.ptr = val

@@ -13,7 +13,6 @@ target_sources(taichi_util
 target_include_directories(taichi_util
   PRIVATE
     ${PROJECT_SOURCE_DIR}
-    ${PROJECT_SOURCE_DIR}/external/include
     ${PROJECT_SOURCE_DIR}/external/eigen
   )
 

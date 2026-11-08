@@ -13,6 +13,127 @@ namespace taichi::lang {
 
 namespace irpass {
 
+namespace {
+// This first external-buffer AD contract deliberately has no replay stack,
+// cross-element reductions, or mutation of primal inputs. Validate lowered IR
+// (including inlined helpers), not just the spelling of the Python entry point.
+void validate_local_vjp(IRNode *ir, const Kernel *kernel) {
+  auto reject = [&](Stmt *stmt, const std::string &reason) {
+    TI_ERROR("Local VJP in {}: {}\n{}", kernel->get_name(), reason,
+             stmt ? stmt->get_tb() : "");
+  };
+  for (const auto &parameter : kernel->parameter_list) {
+    if (!parameter.is_array || parameter.total_dim != 1 ||
+        !parameter.element_shape.empty())
+      reject(nullptr, "parameters must be one-dimensional float32 external buffers");
+    auto *structure = parameter.get_dtype()->as<StructType>();
+    DataType element(structure->get_element_type({TypeFactory::DATA_PTR_POS_IN_NDARRAY}));
+    if (element.ptr_removed() != PrimitiveType::f32)
+      reject(nullptr, "parameters must be one-dimensional float32 external buffers");
+  }
+  RangeForStmt *domain = nullptr;
+  using Writes = std::unordered_set<int>;
+  std::unordered_set<int> reads;
+  std::unordered_set<Stmt *> predicates;
+  bool has_branch = false;
+  auto argument = [&](ExternalPtrStmt *ptr) {
+    auto *base = ptr->base_ptr->cast<ArgLoadStmt>();
+    if (!domain || !base || base->arg_id.size() != 1 || ptr->is_grad ||
+        ptr->indices.size() != 1 || !ptr->element_shape.empty())
+      reject(ptr, "only same-index primal external-buffer accesses are supported");
+    auto *index = ptr->indices[0]->cast<LoopIndexStmt>();
+    if (!index || index->loop != domain || index->index != 0)
+      reject(ptr, "scatter, gather and reductions are not supported; use the domain index");
+    return base->arg_id[0];
+  };
+  std::function<Writes(Block *, bool, bool)> inspect =
+      [&](Block *block, bool in_domain, bool in_branch) {
+    Writes writes;
+    for (auto &owned : block->statements) {
+      Stmt *stmt = owned.get();
+      if (auto *loop = stmt->cast<RangeForStmt>()) {
+        auto *begin = loop->begin->cast<ConstStmt>();
+        auto *end = loop->end->cast<ExternalTensorShapeAlongAxisStmt>();
+        if (in_domain || domain || !begin || begin->val.val_int32() != 0 ||
+            !end || end->axis != 0 || loop->strictly_serialized)
+          reject(stmt, "exactly one parallel range(0, buffer.shape[0]) domain is supported");
+        domain = loop;
+        writes = inspect(loop->body.get(), true, false);
+      } else if (auto *branch = stmt->cast<IfStmt>()) {
+        if (!in_domain || in_branch || has_branch ||
+            !predicates.count(branch->cond) || !branch->true_statements ||
+            !branch->false_statements)
+          reject(stmt, "one pure comparison with two complete output branches is supported");
+        has_branch = true;
+        const auto true_writes = inspect(branch->true_statements.get(), true, true);
+        const auto false_writes = inspect(branch->false_statements.get(), true, true);
+        if (true_writes.size() != 1 || true_writes != false_writes)
+          reject(stmt, "both paths must assign the same seeded output exactly once");
+        if (!writes.insert(*true_writes.begin()).second)
+          reject(stmt, "an output is assigned more than once on a reachable path");
+      } else if (auto *ptr = stmt->cast<ExternalPtrStmt>()) {
+        argument(ptr);
+      } else if (auto *load = stmt->cast<GlobalLoadStmt>()) {
+        auto *ptr = load->src->cast<ExternalPtrStmt>();
+        if (!in_domain || !ptr)
+          reject(stmt, "only same-index external-buffer reads are supported");
+        reads.insert(argument(ptr));
+      } else if (auto *store = stmt->cast<GlobalStoreStmt>()) {
+        auto *ptr = store->dest->cast<ExternalPtrStmt>();
+        if (!in_domain || !ptr)
+          reject(stmt, "only one same-index output assignment is supported");
+        const int index = argument(ptr);
+        if (!kernel->parameter_list.at(index).needs_grad || !writes.insert(index).second)
+          reject(stmt, "each output needs a gradient seed and a single assignment");
+      } else if (auto *binary = stmt->cast<BinaryOpStmt>()) {
+        if (is_comparison(binary->op_type) &&
+            binary->lhs->ret_type == PrimitiveType::f32 &&
+            binary->rhs->ret_type == PrimitiveType::f32 &&
+            binary->ret_type == PrimitiveType::u1) {
+          predicates.insert(binary);
+        } else if (binary->ret_type != PrimitiveType::f32 ||
+                   (binary->op_type != BinaryOpType::add &&
+                    binary->op_type != BinaryOpType::sub &&
+                    binary->op_type != BinaryOpType::mul &&
+                    binary->op_type != BinaryOpType::div)) {
+          reject(stmt, "only float32 arithmetic and pure float32 comparisons are supported");
+        }
+      } else if (auto *unary = stmt->cast<UnaryOpStmt>()) {
+        if (predicates.count(unary->operand) &&
+            unary->ret_type == PrimitiveType::u1 &&
+            (unary->op_type == UnaryOpType::logic_not ||
+             unary->op_type == UnaryOpType::cast_value)) {
+          predicates.insert(unary);
+        } else if (unary->ret_type != PrimitiveType::f32 ||
+                   predicates.count(unary->operand) ||
+                   (unary->op_type != UnaryOpType::neg &&
+                    unary->op_type != UnaryOpType::cast_value &&
+                    unary->op_type != UnaryOpType::exp &&
+                    unary->op_type != UnaryOpType::tanh &&
+                    unary->op_type != UnaryOpType::log &&
+                    unary->op_type != UnaryOpType::sqrt)) {
+          reject(stmt, "local VJP requires supported float32 unary arithmetic or a predicate cast");
+        }
+      } else if (!stmt->is<ConstStmt>() && !stmt->is<ArgLoadStmt>() &&
+                 !stmt->is<ExternalTensorShapeAlongAxisStmt>() &&
+                 !stmt->is<LoopIndexStmt>()) {
+        reject(stmt, "control flow, reductions, side effects and mutable locals are not supported");
+      }
+    }
+    return writes;
+  };
+  const auto writes = inspect(ir->as<Block>(), false, false);
+  bool differentiable_input = false;
+  for (int input : reads) {
+    if (writes.count(input))
+      reject(nullptr, "in-place updates and reading an output buffer are not supported");
+    differentiable_input |= kernel->parameter_list.at(input).needs_grad;
+  }
+  if (!domain || writes.size() != 1 || !differentiable_input)
+    reject(nullptr, "one output with a seed and at least one differentiable input are required");
+}
+}  // namespace
+
 void compile_to_offloads(IRNode *ir,
                          const CompileConfig &config,
                          const Kernel *kernel,
@@ -105,6 +226,9 @@ void compile_to_offloads(IRNode *ir,
 
   if (autodiff_mode == AutodiffMode::kReverse ||
       autodiff_mode == AutodiffMode::kForward) {
+    if (autodiff_mode != AutodiffMode::kReverse)
+      TI_ERROR("The compiler-only external-buffer contract supports reverse local VJP only");
+    validate_local_vjp(ir, kernel);
     // Remove local atomics here so that we don't have to handle their gradients
     irpass::demote_atomics(ir, config);
 

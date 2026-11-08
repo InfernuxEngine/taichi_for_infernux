@@ -15,9 +15,7 @@ target_include_directories(spirv_codegen
   PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/external/eigen
-    ${PROJECT_SOURCE_DIR}/external/include
     ${PROJECT_SOURCE_DIR}/external/SPIRV-Headers/include
-    ${PROJECT_SOURCE_DIR}/external/SPIRV-Reflect
     ${PROJECT_SOURCE_DIR}/external/FP16/include
   )
 

@@ -57,7 +57,8 @@ std::string buffer_instance_name(BufferInfo b) {
       return kListgenBufferName;
     case BufferType::ExtArr:
       return std::string(kExtArrBufferName) + "_" +
-             fmt::format("{}", fmt::join(b.root_id, "_"));
+             fmt::format("{}", fmt::join(b.root_id, "_")) +
+             (b.is_grad ? "_grad" : "");
     case BufferType::ArgPack:
       return std::string(kArgPackBufferName) + "_" +
              fmt::format("{}", fmt::join(b.root_id, "_"));
@@ -78,6 +79,7 @@ class TaskCodegen : public IRVisitor {
     const KernelContextAttributes *ctx_attribs;
     std::string ti_kernel_name;
     int task_id_in_kernel;
+    bool fast_math;
   };
 
   const bool use_64bit_pointers = false;
@@ -95,7 +97,7 @@ class TaskCodegen : public IRVisitor {
     invoke_default_visitor = true;
 
     fill_snode_to_root();
-    ir_ = std::make_shared<spirv::IRBuilder>(arch_, caps_);
+    ir_ = std::make_shared<spirv::IRBuilder>(arch_, caps_, params.fast_math);
   }
 
   void fill_snode_to_root() {
@@ -122,10 +124,7 @@ class TaskCodegen : public IRVisitor {
   struct Result {
     std::vector<uint32_t> spirv_code;
     TaskAttributes task_attribs;
-    std::unordered_map<std::vector<int>,
-                       irpass::ExternalPtrAccess,
-                       hashing::Hasher<std::vector<int>>>
-        arr_access;
+    irpass::ExternalPtrAccessMap arr_access;
   };
 
   Result run() {
@@ -783,7 +782,8 @@ class TaskCodegen : public IRVisitor {
     }
     if (caps_->get(DeviceCapability::spirv_has_physical_storage_buffer)) {
       std::vector<int> indices = arg_id;
-      indices.push_back(1);
+      indices.push_back(stmt->is_grad ? TypeFactory::GRAD_PTR_POS_IN_NDARRAY
+                                     : TypeFactory::DATA_PTR_POS_IN_NDARRAY);
       spirv::Value addr_ptr = ir_->make_access_chain(
           ir_->get_pointer_type(ir_->u64_type(), spv::StorageClassUniform),
           get_buffer_value(BufferType::Args, PrimitiveType::i32), indices);
@@ -797,7 +797,8 @@ class TaskCodegen : public IRVisitor {
       // bound RHI buffer, which permits unaligned logical inx.buffer views
       // without rebinding or allocating another Vulkan resource.
       std::vector<int> indices = arg_id;
-      indices.push_back(TypeFactory::DATA_PTR_POS_IN_NDARRAY);
+      indices.push_back(stmt->is_grad ? TypeFactory::GRAD_PTR_POS_IN_NDARRAY
+                                     : TypeFactory::DATA_PTR_POS_IN_NDARRAY);
       const spirv::Value arguments =
           get_buffer_value(BufferType::Args, PrimitiveType::i32);
       spirv::SType offset_type = args_struct_types_.at(indices);
@@ -816,7 +817,7 @@ class TaskCodegen : public IRVisitor {
     }
 
     if (ctx_attribs_->arg_at(arg_id).is_array) {
-      ptr_to_buffers_[stmt] = {BufferType::ExtArr, arg_id};
+      ptr_to_buffers_[stmt] = {BufferType::ExtArr, arg_id, stmt->is_grad};
     } else {
       ptr_to_buffers_[stmt] = BufferType::Args;
     }
@@ -2029,12 +2030,19 @@ class TaskCodegen : public IRVisitor {
 
     task_attribs_.range_for_attribs = TaskAttributes::RangeForAttributes();
     auto &range_for_attribs = task_attribs_.range_for_attribs.value();
-    range_for_attribs.const_begin = stmt->const_begin;
-    range_for_attribs.const_end = stmt->const_end;
+    using RangeSource = TaskAttributes::RangeForAttributes::Source;
+    range_for_attribs.begin_source = stmt->const_begin
+                                        ? RangeSource::constant
+                                        : RangeSource::global_temporaries;
+    range_for_attribs.end_source =
+        stmt->const_end ? RangeSource::constant
+                       : (stmt->end_stmt ? RangeSource::arguments
+                                         : RangeSource::global_temporaries);
     range_for_attribs.begin =
         (stmt->const_begin ? stmt->begin_value : stmt->begin_offset);
     range_for_attribs.end =
-        (stmt->const_end ? stmt->end_value : stmt->end_offset);
+        (stmt->const_end ? stmt->end_value
+                        : (stmt->end_stmt ? 0 : stmt->end_offset));
 
     ir_->start_function(kernel_function_);
     const std::string total_elems_name("total_elems");
@@ -2773,6 +2781,7 @@ void KernelCodegen::run(TaichiKernelAttributes &kernel_attribs,
     tp.ti_kernel_name = fmt::format("{}_{}", params_.ti_kernel_name, i);
     tp.arch = params_.arch;
     tp.caps = &params_.caps;
+    tp.fast_math = params_.fast_math;
 
     TaskCodegen cgen(tp);
     auto task_res = cgen.run();

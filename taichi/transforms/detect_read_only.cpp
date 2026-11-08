@@ -24,17 +24,12 @@ void detect_read_only_in_task(OffloadedStmt *offload) {
 
 class ExternalPtrAccessVisitor : public BasicStmtVisitor {
  private:
-  std::unordered_map<std::vector<int>,
-                     ExternalPtrAccess,
-                     hashing::Hasher<std::vector<int>>> &map_;
+  ExternalPtrAccessMap &map_;
 
  public:
   using BasicStmtVisitor::visit;
 
-  explicit ExternalPtrAccessVisitor(
-      std::unordered_map<std::vector<int>,
-                         ExternalPtrAccess,
-                         hashing::Hasher<std::vector<int>>> &map)
+  explicit ExternalPtrAccessVisitor(ExternalPtrAccessMap &map)
       : map_(map) {
   }
 
@@ -44,11 +39,8 @@ class ExternalPtrAccessVisitor : public BasicStmtVisitor {
 
     ExternalPtrStmt *src = stmt->src->cast<ExternalPtrStmt>();
     ArgLoadStmt *arg = src->base_ptr->cast<ArgLoadStmt>();
-    if (map_.find(arg->arg_id) != map_.end()) {
-      map_[arg->arg_id] = map_[arg->arg_id] | ExternalPtrAccess::READ;
-    } else {
-      map_[arg->arg_id] = ExternalPtrAccess::READ;
-    }
+    const ExternalPtrAccessKey key{arg->arg_id, src->is_grad};
+    map_[key] = map_[key] | ExternalPtrAccess::READ;
   }
 
   void visit(GlobalStoreStmt *stmt) override {
@@ -57,11 +49,8 @@ class ExternalPtrAccessVisitor : public BasicStmtVisitor {
 
     ExternalPtrStmt *dst = stmt->dest->cast<ExternalPtrStmt>();
     ArgLoadStmt *arg = dst->base_ptr->cast<ArgLoadStmt>();
-    if (map_.find(arg->arg_id) != map_.end()) {
-      map_[arg->arg_id] = map_[arg->arg_id] | ExternalPtrAccess::WRITE;
-    } else {
-      map_[arg->arg_id] = ExternalPtrAccess::WRITE;
-    }
+    const ExternalPtrAccessKey key{arg->arg_id, dst->is_grad};
+    map_[key] = map_[key] | ExternalPtrAccess::WRITE;
   }
 
   void visit(AtomicOpStmt *stmt) override {
@@ -71,7 +60,8 @@ class ExternalPtrAccessVisitor : public BasicStmtVisitor {
     // Atomics modifies existing state (therefore both read & write)
     ExternalPtrStmt *dst = stmt->dest->cast<ExternalPtrStmt>();
     ArgLoadStmt *arg = dst->base_ptr->cast<ArgLoadStmt>();
-    map_[arg->arg_id] = ExternalPtrAccess::WRITE | ExternalPtrAccess::READ;
+    map_[{arg->arg_id, dst->is_grad}] =
+        ExternalPtrAccess::WRITE | ExternalPtrAccess::READ;
   }
 };
 
@@ -87,13 +77,8 @@ void detect_read_only(IRNode *root) {
   }
 }
 
-std::unordered_map<std::vector<int>,
-                   ExternalPtrAccess,
-                   hashing::Hasher<std::vector<int>>>
-detect_external_ptr_access_in_task(OffloadedStmt *offload) {
-  std::unordered_map<std::vector<int>, ExternalPtrAccess,
-                     hashing::Hasher<std::vector<int>>>
-      map;
+ExternalPtrAccessMap detect_external_ptr_access_in_task(OffloadedStmt *offload) {
+  ExternalPtrAccessMap map;
   ExternalPtrAccessVisitor v(map);
   offload->accept(&v);
   return map;

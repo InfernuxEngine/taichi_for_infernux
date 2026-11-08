@@ -140,7 +140,6 @@ set(CORE_LIBRARY_NAME taichi_core)
 add_library(${CORE_LIBRARY_NAME} OBJECT ${TAICHI_CORE_SOURCE})
 
 target_include_directories(${CORE_LIBRARY_NAME} PRIVATE ${CMAKE_SOURCE_DIR})
-target_include_directories(${CORE_LIBRARY_NAME} PRIVATE external/include)
 target_include_directories(${CORE_LIBRARY_NAME} PRIVATE external/SPIRV-Tools/include)
 target_include_directories(${CORE_LIBRARY_NAME} PRIVATE external/eigen)
 target_include_directories(${CORE_LIBRARY_NAME} PRIVATE external/FP16/include)
@@ -171,20 +170,6 @@ add_subdirectory(taichi/codegen/spirv)
 
 target_link_libraries(${CORE_LIBRARY_NAME} PRIVATE spirv_codegen)
 
-
-# Optional dependencies
-if (APPLE)
-    set(APPLE_FRAMEWORKS "")
-    find_library(Foundation NAMES Foundation REQUIRED)
-    find_library(Metal NAMES Metal REQUIRED)
-    list(APPEND APPLE_FRAMEWORKS ${Foundation} ${Metal})
-    if (NOT IOS)
-        find_library(ApplicationServices NAMES ApplicationServices REQUIRED)
-        find_library(Cocoa NAMES Cocoa REQUIRED)
-        list(APPEND APPLE_FRAMEWORKS ${ApplicationServices} ${Cocoa})
-    endif()
-    target_link_libraries(${CORE_LIBRARY_NAME} PRIVATE ${APPLE_FRAMEWORKS})
-endif ()
 
 if (ANDROID)
     # Android has a custom toolchain so pthread is not available and should
@@ -233,13 +218,6 @@ if(TI_WITH_PYTHON)
             # Android defaults to static linking with libc++, no tinkering needed.
             target_link_options(${CORE_WITH_PYBIND_LIBRARY_NAME} PUBLIC -static-libgcc -static-libstdc++)
         endif()
-    endif()
-
-    if (TI_WITH_BACKTRACE)
-        # Defined by external/backward-cpp:
-        # This will add libraries, definitions and include directories needed by backward
-        # by setting each property on the target.
-        target_link_libraries(${CORE_WITH_PYBIND_LIBRARY_NAME} PRIVATE ${BACKWARD_ENABLE})
     endif()
 
     target_link_libraries(${CORE_WITH_PYBIND_LIBRARY_NAME} PRIVATE ${CORE_LIBRARY_NAME})

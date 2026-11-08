@@ -34,6 +34,7 @@ struct TaskAttributes {
   struct BufferInfo {
     BufferType type;
     std::vector<int> root_id{-1};  // only used if type==Root or type==ExtArr
+    bool is_grad{false};  // ExtArr cotangent has its own descriptor binding.
 
     BufferInfo() = default;
 
@@ -45,21 +46,25 @@ struct TaskAttributes {
         : type(buffer_type), root_id({root_buffer_id}) {
     }
 
-    BufferInfo(BufferType buffer_type, const std::vector<int> &root_buffer_id)
-        : type(buffer_type), root_id(root_buffer_id) {
+    BufferInfo(BufferType buffer_type, const std::vector<int> &root_buffer_id,
+               bool gradient = false)
+        : type(buffer_type), root_id(root_buffer_id), is_grad(gradient) {
     }
 
     bool operator==(const BufferInfo &other) const {
       if (type != other.type) {
         return false;
       }
-      if (type == BufferType::Root || type == BufferType::ExtArr) {
+      if (type == BufferType::ExtArr) {
+        return root_id == other.root_id && is_grad == other.is_grad;
+      }
+      if (type == BufferType::Root) {
         return root_id == other.root_id;
       }
       return true;
     }
 
-    TI_IO_DEF(type, root_id);
+    TI_IO_DEF(type, root_id, is_grad);
   };
 
   struct BufferInfoHasher {
@@ -71,6 +76,8 @@ struct TaskAttributes {
       size_t hash_result = hash<BufferType>()(buf.type);
       for (const int &element : buf.root_id)
         hash_result ^= element;
+      if (buf.type == BufferType::ExtArr)
+        hash_result ^= static_cast<size_t>(buf.is_grad) << 31;
       return hash_result;
     }
   };
@@ -103,21 +110,21 @@ struct TaskAttributes {
   OffloadedTaskType task_type;
 
   struct RangeForAttributes {
-    // |begin| has different meanings depending on |const_begin|:
-    // * true : It is the left boundary of the loop known at compile time.
-    // * false: It is the offset of the begin in the global tmps buffer.
-    //
-    // Same applies to |end|.
-    size_t begin{0};
-    size_t end{0};
-    bool const_begin{true};
-    bool const_end{true};
+    enum class Source { constant, arguments, global_temporaries };
+
+    // A constant boundary or a GlobalTmps byte offset, according to source.
+    // Arguments are evaluated by the shader, not an offset in GlobalTmps;
+    // their numeric field is unused and is not exported as a boundary value.
+    int begin{0};
+    int end{0};
+    Source begin_source{Source::constant};
+    Source end_source{Source::constant};
 
     inline bool const_range() const {
-      return (const_begin && const_end);
+      return begin_source == Source::constant && end_source == Source::constant;
     }
 
-    TI_IO_DEF(begin, end, const_begin, const_end);
+    TI_IO_DEF(begin, end, begin_source, end_source);
   };
   std::vector<BufferBind> buffer_binds;
   std::vector<TextureBind> texture_binds;
@@ -321,7 +328,7 @@ class KernelContextAttributes {
     return argpack_types_;
   }
 
-  std::vector<std::pair<std::vector<int>, irpass::ExternalPtrAccess>>
+  std::vector<std::pair<irpass::ExternalPtrAccessKey, irpass::ExternalPtrAccess>>
       arr_access;
 
   TI_IO_DEF(arg_attribs_vec_,

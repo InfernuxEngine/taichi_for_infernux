@@ -73,7 +73,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(USE_LLD "Use lld (from llvm) linker" OFF)
 option(USE_MOLD "Use mold (A Modern Linker)" OFF)
-option(TI_WITH_BACKTRACE "Use backward-cpp to print out C++ stack trace upon failure" OFF)  # wheel-tag: bt
 option(TI_GENERATE_PDB "Generate Program Database (PDB) files (will make compilation uncacheable)" OFF)
 option(TI_WITH_LTO "Enable Link Time Optimization (LTO) (affects Windows + MSVC for now)" OFF)  # wheel-tag: lto
 
@@ -117,10 +116,6 @@ else()
     find_package(Python 3.13 EXACT REQUIRED COMPONENTS Interpreter)
 endif()
 
-if (TI_WITH_BACKTRACE)
-  add_subdirectory(external/backward_cpp)
-endif()
-
 if (TI_DISTRIBUTED_COMPILE)
     include(cmake/Distributed.cmake)
 endif()
@@ -130,23 +125,6 @@ include(cmake/TaichiCore.cmake)
 
 message("C++ Flags: ${CMAKE_CXX_FLAGS}")
 message("Build type: ${CMAKE_BUILD_TYPE}")
-
-if (NOT TI_WITH_CUDA)
-    set(CUDA_VERSION "0.0")
-    set(CUDA_TOOLKIT_ROOT_DIR "")
-endif()
-
-if (TI_WITH_CUDA)
-    set(CUDA_ARCH "cuda")
-endif()
-
-if (TI_WITH_AMDGPU)
-    set(AMDGPU_ARCH "amdgpu")
-endif()
-
-if (TI_WITH_DX12)
-    set(DX12_ARCH "dx12")
-endif()
 
 configure_file(taichi/common/version.h.in ${CMAKE_SOURCE_DIR}/taichi/common/version.h)
 configure_file(taichi/common/commit_hash.h.in ${CMAKE_SOURCE_DIR}/taichi/common/commit_hash.h)

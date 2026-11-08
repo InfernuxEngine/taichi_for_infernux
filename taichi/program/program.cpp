@@ -74,9 +74,11 @@ std::unique_ptr<spirv::CompiledKernelData> Program::compile_kernel(
   return compiler.compile(compile_config, caps, kernel_def, *ir);
 }
 
-DeviceCapabilityConfig Program::get_device_caps() const {
+DeviceCapabilityConfig Program::make_target_caps(bool shader_int64) const {
   DeviceCapabilityConfig caps;
   caps.set(DeviceCapability::spirv_version, 0x10300);
+  if (shader_int64)
+    caps.set(DeviceCapability::spirv_has_int64, 1);
   return caps;
 }
 

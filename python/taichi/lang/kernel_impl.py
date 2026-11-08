@@ -241,7 +241,7 @@ class TaichiCallableTemplateMapper:
                     element_type = _ti_core.get_type_factory_instance().get_tensor_type(
                         element_type.get_shape(), element_type.dtype
                     )
-                return element_type, anno.ndim, False, anno.boundary
+                return element_type, anno.ndim, bool(anno.needs_grad), anno.boundary
             if isinstance(arg, AnyArray):
                 ty = arg.get_type()
                 anno.check_matched(ty, arg_name)
@@ -287,7 +287,10 @@ class Kernel:
     counter = 0
     _is_wrapped_kernel = True  # AST call classification; this object cannot execute.
 
-    def __init__(self, _func):
+    def __init__(self, _func, *, autodiff_mode="none"):
+        if autodiff_mode not in {"none", "reverse"}:
+            raise ValueError("Compiler autodiff_mode must be 'none' or 'reverse'")
+        self.autodiff_mode = autodiff_mode
         self.func = _func
         self.kernel_counter = Kernel.counter
         Kernel.counter += 1
@@ -354,7 +357,7 @@ class Kernel:
 
     def materialize(self, key=None, args=None, arg_features=None):
         if key is None:
-            key = (self.func, 0)
+            key = (self.func, 0, self.autodiff_mode)
 
         if key in self.compiled_kernels:
             return
@@ -395,14 +398,14 @@ class Kernel:
                 self.runtime.compiling_callable = None
                 self.kernel_cpp = None
 
-        taichi_kernel = impl.get_runtime().prog.create_kernel(kernel_name)
+        taichi_kernel = impl.get_runtime().prog.create_kernel(kernel_name, self.autodiff_mode)
         taichi_ast_generator(taichi_kernel)
         assert key not in self.compiled_kernels
         self.compiled_kernels[key] = taichi_kernel
 
     def ensure_compiled(self, *args):
         instance_id, arg_features = self.mapper.lookup(args)
-        key = (self.func, instance_id)
+        key = (self.func, instance_id, self.autodiff_mode)
         self.materialize(key=key, args=args, arg_features=arg_features)
         return key
 
@@ -413,9 +416,9 @@ class Kernel:
         )
 
 
-def kernel(fn):
+def kernel(fn, *, autodiff_mode="none"):
     """Create one compiler kernel; execution belongs to Infernux."""
-    return Kernel(fn)
+    return Kernel(fn, autodiff_mode=autodiff_mode)
 
 
 __all__ = ["func", "kernel", "pyfunc"]

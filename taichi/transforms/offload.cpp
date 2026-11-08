@@ -13,23 +13,58 @@ namespace taichi::lang {
 
 namespace irpass {
 namespace {
-bool demotable_axis_load(Stmt *stmt) {
-  // Stmt involving simple arithmetic of ExternalTensorShapeAlongAxisStmt
-  // shouldn't be saved in global tmp, just clone them to each shader
-  // separately.
-  if (stmt->is<GlobalLoadStmt>())
+bool recomputable_range_bound(Stmt *stmt) {
+  // Only immutable i32 argument expressions may be cloned into each shader.
+  // A pointer, storage load, random value or side effect is not a uniform
+  // argument merely because its operands are themselves uniform.
+  if (stmt->ret_type != PrimitiveType::i32)
     return false;
-  int n_op = stmt->num_operands();
-  if (n_op == 0) {
-    return stmt->is<ExternalTensorShapeAlongAxisStmt>() ||
-           stmt->is<ConstStmt>();
+  if (stmt->is<ExternalTensorShapeAlongAxisStmt>() || stmt->is<ConstStmt>())
+    return true;
+  if (auto *arg = stmt->cast<ArgLoadStmt>()) {
+    return !arg->is_ptr && arg->create_load && arg->arg_depth == 0 &&
+           arg->arg_id.size() == 1;
   }
-  for (int i = 0; i < n_op; i++) {
-    auto op = stmt->operand(i);
-    if (!demotable_axis_load(op))
-      return false;
+  if (auto *unary = stmt->cast<UnaryOpStmt>()) {
+    return (unary->op_type == UnaryOpType::neg ||
+            unary->op_type == UnaryOpType::cast_value) &&
+           recomputable_range_bound(unary->operand);
   }
-  return true;
+  if (auto *binary = stmt->cast<BinaryOpStmt>()) {
+    switch (binary->op_type) {
+      case BinaryOpType::add:
+      case BinaryOpType::sub:
+      case BinaryOpType::mul:
+      case BinaryOpType::min:
+      case BinaryOpType::max:
+      case BinaryOpType::bit_and:
+      case BinaryOpType::bit_or:
+      case BinaryOpType::bit_xor:
+        return recomputable_range_bound(binary->lhs) &&
+               recomputable_range_bound(binary->rhs);
+      case BinaryOpType::div:
+      case BinaryOpType::floordiv: {
+        // A positive constant excludes division by zero and INT_MIN / -1.
+        auto *divisor = binary->rhs->cast<ConstStmt>();
+        return divisor && divisor->ret_type == PrimitiveType::i32 &&
+               divisor->val.val_int32() > 0 &&
+               recomputable_range_bound(binary->lhs);
+      }
+      case BinaryOpType::bit_shl:
+      case BinaryOpType::bit_shr:
+      case BinaryOpType::bit_sar: {
+        // Strength reduction can turn a multiplication by a power of two
+        // into a shift before offload. Only defined constant shifts qualify.
+        auto *shift = binary->rhs->cast<ConstStmt>();
+        return shift && shift->ret_type == PrimitiveType::i32 &&
+               shift->val.val_int32() >= 0 && shift->val.val_int32() < 32 &&
+               recomputable_range_bound(binary->lhs);
+      }
+      default:
+        return false;
+    }
+  }
+  return false;
 }
 class SquashPtrOffset : public IRVisitor {
  public:
@@ -116,11 +151,12 @@ class Offloader {
           offloaded->const_end = true;
           offloaded->end_value = val->val.val_int32();
         } else {
-          if ((arch == Arch::opengl || arch == Arch::vulkan ||
+          if (offloaded->const_begin &&
+              (arch == Arch::opengl || arch == Arch::vulkan ||
                arch == Arch::gles || arch == Arch::metal) &&
-              demotable_axis_load(s->end)) {
-            // TODO: We need to update codegen for each backend gradually so
-            // let's limit it to opengl backend for now.
+              recomputable_range_bound(s->end)) {
+            // SPIR-V reconstructs this expression from the immutable argument
+            // buffer. Dynamic begin still needs the existing temporary path.
             auto end_copy = s->end->clone();
             offloaded->end_stmt = end_copy.get();
             offloaded->body->insert(std::move(end_copy));
@@ -364,11 +400,11 @@ class IdentifyValuesUsedInOtherOffloads : public BasicStmtVisitor {
     current_offloaded_ = stmt;
     if (auto begin = offloaded_ranges_->begin_stmts.find(stmt);
         begin != offloaded_ranges_->begin_stmts.end()) {
-      test_and_allocate(begin->second);
+      test_and_allocate(begin->second, true);
     }
     if (auto end = offloaded_ranges_->end_stmts.find(stmt);
         end != offloaded_ranges_->end_stmts.end()) {
-      test_and_allocate(end->second);
+      test_and_allocate(end->second, !stmt->end_stmt);
     }
     if (stmt->body)
       stmt->body->accept(this);
@@ -379,7 +415,7 @@ class IdentifyValuesUsedInOtherOffloads : public BasicStmtVisitor {
     TI_ASSERT(current_offloaded_);
   }
 
-  void test_and_allocate(Stmt *stmt) {
+  void test_and_allocate(Stmt *stmt, bool range_needs_storage = false) {
     if (stmt == nullptr)
       return;
     if (stmt_to_offloaded_[stmt] == current_offloaded_)
@@ -393,9 +429,10 @@ class IdentifyValuesUsedInOtherOffloads : public BasicStmtVisitor {
         (stmt->is<ArgLoadStmt>() && (stmt->as<ArgLoadStmt>()->is_ptr ||
                                      !stmt->as<ArgLoadStmt>()->create_load)))
       return;
-    if ((config_.arch == Arch::opengl || config_.arch == Arch::vulkan ||
+    if (!range_needs_storage &&
+        (config_.arch == Arch::opengl || config_.arch == Arch::vulkan ||
          config_.arch == Arch::gles || config_.arch == Arch::metal) &&
-        demotable_axis_load(stmt))
+        recomputable_range_bound(stmt))
       return;
     // Not yet allocated
     if (local_to_global_.find(top_level_ptr) == local_to_global_.end()) {

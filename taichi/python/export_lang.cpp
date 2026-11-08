@@ -141,6 +141,8 @@ void export_lang(py::module &m) {
       .def_readwrite("default_ip", &CompileConfig::default_ip)
       .def_readwrite("default_up", &CompileConfig::default_up)
       .def_readwrite("fast_math", &CompileConfig::fast_math)
+      .def_readwrite("external_optimization_level",
+                     &CompileConfig::external_optimization_level)
       .def_readwrite("advanced_optimization",
                      &CompileConfig::advanced_optimization)
       .def_readwrite("ad_stack_size", &CompileConfig::ad_stack_size)
@@ -237,6 +239,32 @@ void export_lang(py::module &m) {
               py::dict item;
               item["name"] = task.name;
               item["entry_point"] = task.name;
+              item["task_type"] = offloaded_task_type_name(task.task_type);
+              if (task.range_for_attribs) {
+                using Source = spirv::TaskAttributes::RangeForAttributes::Source;
+                const auto source_name = [](Source source) {
+                  switch (source) {
+                    case Source::constant:
+                      return "constant";
+                    case Source::arguments:
+                      return "arguments";
+                    case Source::global_temporaries:
+                      return "global_temporaries";
+                  }
+                  TI_ERROR("Unknown SPIR-V range source");
+                };
+                const auto &range = *task.range_for_attribs;
+                py::dict bounds;
+                bounds["begin_source"] = source_name(range.begin_source);
+                bounds["end_source"] = source_name(range.end_source);
+                bounds["const_begin"] = range.begin_source == Source::constant;
+                bounds["const_end"] = range.end_source == Source::constant;
+                bounds["begin"] = py::int_(range.begin);
+                bounds["end"] = range.end_source == Source::arguments
+                                    ? py::object(py::none())
+                                    : py::object(py::int_(range.end));
+                item["range"] = std::move(bounds);
+              }
               item["total_threads"] = task.advisory_total_num_threads;
               item["threads_per_group"] = task.advisory_num_threads_per_group;
               item["workgroup_size"] = py::make_tuple(
@@ -257,8 +285,10 @@ void export_lang(py::module &m) {
                   case BufferType::ExtArr:
                     value["resource_kind"] = "external_buffer";
                     value["binding_type"] = "storage";
-                    for (const auto &[indices, access] : array_accesses) {
-                      if (indices == binding.buffer.root_id) {
+                    value["is_grad"] = binding.buffer.is_grad;
+                    for (const auto &[resource, access] : array_accesses) {
+                      if (resource.arg_id == binding.buffer.root_id &&
+                          resource.is_grad == binding.buffer.is_grad) {
                         value["access"] = static_cast<uint32_t>(access);
                         break;
                       }
@@ -307,17 +337,23 @@ void export_lang(py::module &m) {
            py::return_value_policy::reference_internal)
       .def(
           "create_kernel",
-          [](Program *program, const std::string &name) {
+          [](Program *program, const std::string &name, const std::string &mode) {
+            if (mode != "none" && mode != "reverse")
+              throw std::invalid_argument(
+                  "Compiler autodiff_mode must be 'none' or 'reverse'");
             py::gil_scoped_release release;
             // Publish the owning Python handle before Python AST lowering.
             // A retained error traceback must never contain a half-constructed
             // native Kernel that was deleted by a throwing constructor.
-            return program->kernel([](Kernel *) {}, name);
+            return program->kernel([](Kernel *) {}, name,
+                                   mode == "reverse" ? AutodiffMode::kReverse
+                                                     : AutodiffMode::kNone);
           },
+          py::arg("name"), py::arg("autodiff_mode") = "none",
           py::keep_alive<0, 1>())
       .def("compile_kernel", &Program::compile_kernel,
            py::return_value_policy::move)
-      .def("get_device_caps", &Program::get_device_caps);
+      .def("make_target_caps", &Program::make_target_caps);
 
   py::class_<Kernel>(m, "Kernel")
       .def("insert_scalar_param", &Kernel::insert_scalar_param)
@@ -352,6 +388,13 @@ void export_lang(py::module &m) {
                 item["byte_offset_offset"] =
                     kernel.args_type->get_element_offset(
                         {static_cast<int>(index), 1});
+                item["byte_offset_width"] = 4;
+                item["needs_grad"] = parameter.needs_grad;
+                if (parameter.needs_grad)
+                  item["grad_byte_offset_offset"] =
+                      kernel.args_type->get_element_offset(
+                          {static_cast<int>(index),
+                           TypeFactory::GRAD_PTR_POS_IN_NDARRAY});
               } else {
                 const auto dtype = parameter.get_dtype();
                 if (dtype->is_primitive(PrimitiveTypeID::i32))

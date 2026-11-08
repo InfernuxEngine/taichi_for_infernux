@@ -222,8 +222,8 @@ class InstrBuilder {
 // Builder to build up a single SPIR-V module
 class IRBuilder {
  public:
-  IRBuilder(Arch arch, const DeviceCapabilityConfig *caps)
-      : arch_(arch), caps_(caps) {
+  IRBuilder(Arch arch, const DeviceCapabilityConfig *caps, bool fast_math)
+      : arch_(arch), caps_(caps), fast_math_(fast_math) {
   }
 
   template <typename... Args>
@@ -292,6 +292,13 @@ class IRBuilder {
   Value make_value(spv::Op op, const SType &out_type, Args &&...args) {
     Value val = new_value(out_type, ValueKind::kNormal);
     make_inst(op, out_type, val, std::forward<Args>(args)...);
+    // Decorate the arithmetic result, not a later cast/store. This also
+    // covers generated reciprocal, random and CAS arithmetic.
+    if (!fast_math_ && out_type.dt == PrimitiveType::f32 &&
+        (op == spv::OpFAdd || op == spv::OpFSub ||
+         op == spv::OpFMul || op == spv::OpFDiv)) {
+      decorate(spv::OpDecorate, val, spv::DecorationNoContraction);
+    }
     if (out_type.flag == TypeKind::kPtr) {
       val.flag = ValueKind::kVariablePtr;
     }
@@ -597,6 +604,7 @@ class IRBuilder {
 
   Arch arch_;
   const DeviceCapabilityConfig *caps_;
+  const bool fast_math_;
 
   // internal instruction builder
   InstrBuilder ib_;

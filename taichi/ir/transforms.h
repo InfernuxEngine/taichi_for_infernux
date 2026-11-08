@@ -152,6 +152,26 @@ void optimize_bit_struct_stores(IRNode *root,
 
 ENUM_FLAGS(ExternalPtrAccess){NONE = 0, READ = 1, WRITE = 2};
 
+// An external parameter's primal and cotangent are separate engine resources.
+struct ExternalPtrAccessKey {
+  std::vector<int> arg_id;
+  bool is_grad{false};
+
+  bool operator==(const ExternalPtrAccessKey &other) const {
+    return arg_id == other.arg_id && is_grad == other.is_grad;
+  }
+  struct Hasher {
+    size_t operator()(const ExternalPtrAccessKey &key) const {
+      return hashing::Hasher<std::vector<int>>()(key.arg_id) ^
+             (static_cast<size_t>(key.is_grad) << 31);
+    }
+  };
+  TI_IO_DEF(arg_id, is_grad);
+};
+using ExternalPtrAccessMap =
+    std::unordered_map<ExternalPtrAccessKey, ExternalPtrAccess,
+                       ExternalPtrAccessKey::Hasher>;
+
 /**
  * Checks the access to external pointers in an offload.
  *
@@ -161,10 +181,7 @@ ENUM_FLAGS(ExternalPtrAccess){NONE = 0, READ = 1, WRITE = 2};
  * @return
  *   The analyzed result.
  */
-std::unordered_map<std::vector<int>,
-                   ExternalPtrAccess,
-                   hashing::Hasher<std::vector<int>>>
-detect_external_ptr_access_in_task(OffloadedStmt *offload);
+ExternalPtrAccessMap detect_external_ptr_access_in_task(OffloadedStmt *offload);
 
 // compile_to_offloads does the basic compilation to create all the offloaded
 // tasks of a Taichi kernel.

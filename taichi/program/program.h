@@ -46,7 +46,7 @@ class TI_DLL_EXPORT Program {
       const DeviceCapabilityConfig &caps,
       const Kernel &kernel_def);
 
-  DeviceCapabilityConfig get_device_caps() const;
+  DeviceCapabilityConfig make_target_caps(bool shader_int64) const;
 
   static int default_block_dim(const CompileConfig &config);
 

@@ -115,6 +115,9 @@ def make_constant_expr(val, dtype):
 
     if isinstance(val, (int, np.integer)):
         constant_dtype = impl.get_runtime().default_ip if dtype is None else dtype
+        if (dtype is None and constant_dtype == primitive_types.i32
+                and not _check_in_range(np.int32, val) and _check_in_range(np.int64, val)):
+            constant_dtype = primitive_types.i64
         if constant_dtype not in integer_types:
             raise TaichiTypeError(
                 "Integer literals must be annotated with a integer type. For type casting, use `ti.cast`."

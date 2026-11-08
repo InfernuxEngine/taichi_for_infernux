@@ -27,6 +27,10 @@ std::string TaskAttributes::buffers_name(BufferInfo b) {
   if (b.type == BufferType::Root) {
     return std::string("Root: ") + fmt::format("{}", fmt::join(b.root_id, "_"));
   }
+  if (b.type == BufferType::ExtArr) {
+    return fmt::format("ExtArr{}: {}", b.is_grad ? ".grad" : "",
+                       fmt::join(b.root_id, "_"));
+  }
   TI_ERROR("unrecognized buffer type");
 }
 
@@ -82,7 +86,9 @@ KernelContextAttributes::KernelContextAttributes(
     aa.field_dim = ka.total_dim - ka.element_shape.size();
     aa.ptype = ka.ptype;
     arg_attribs_vec_.push_back({k, aa});
-    arr_access.push_back({k, irpass::ExternalPtrAccess(0)});
+    arr_access.push_back({{k, false}, irpass::ExternalPtrAccess::NONE});
+    if (ka.is_array && ka.needs_grad)
+      arr_access.push_back({{k, true}, irpass::ExternalPtrAccess::NONE});
   }
   // TODO:
   //  ret_attribs_vec_ and this if loop is redundant now. Remove it in a follow
