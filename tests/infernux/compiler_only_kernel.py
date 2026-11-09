@@ -91,7 +91,7 @@ def affine(values: buffer_description):
 key = affine.ensure_compiled(buffer_description)
 kernel = affine.compiled_kernels[key]
 program = runtime.prog
-compiled = program.compile_kernel(program.config(), program.get_device_caps(), kernel)
+compiled = program.compile_kernel(program.config(), program.make_target_caps(False), kernel)
 assert compiled._infernux_spirv_tasks
 assert compiled._infernux_task_metadata
 assert all(task["threads_per_group"] > 0 for task in compiled._infernux_task_metadata)
@@ -110,7 +110,7 @@ def buffer_loop(values: buffer_description):
 
 loop_key = buffer_loop.ensure_compiled(buffer_description)
 loop_ir = buffer_loop.compiled_kernels[loop_key]
-loop_compiled = program.compile_kernel(program.config(), program.get_device_caps(), loop_ir)
+loop_compiled = program.compile_kernel(program.config(), program.make_target_caps(False), loop_ir)
 assert loop_compiled._infernux_spirv_tasks
 del buffer_loop, loop_ir
 
@@ -150,10 +150,10 @@ def large_serial_loop(values: buffer_description):
 
 short_key = short_serial_loop.ensure_compiled(buffer_description)
 short_artifact = program.compile_kernel(
-    program.config(), program.get_device_caps(), short_serial_loop.compiled_kernels[short_key])
+    program.config(), program.make_target_caps(False), short_serial_loop.compiled_kernels[short_key])
 large_key = large_serial_loop.ensure_compiled(buffer_description)
 large_artifact = program.compile_kernel(
-    program.config(), program.get_device_caps(), large_serial_loop.compiled_kernels[large_key])
+    program.config(), program.make_target_caps(False), large_serial_loop.compiled_kernels[large_key])
 # The compiler-generated outer grid-stride loop remains in both; only the
 # short serial loop is unfolded. Do not expand large loops into giant shaders.
 assert loop_count(short_artifact) == 1
@@ -197,7 +197,7 @@ for iteration in range(32):
     request = ti.kernel(churn)
     key = request.ensure_compiled(buffer_description)
     ir = request.compiled_kernels[key]
-    compiled = runtime.prog.compile_kernel(runtime.prog.config(), runtime.prog.get_device_caps(), ir)
+    compiled = runtime.prog.compile_kernel(runtime.prog.config(), runtime.prog.make_target_caps(False), ir)
     references = weakref.ref(request), weakref.ref(ir)
     assert compiled._infernux_spirv_tasks
     del request, ir, key
@@ -274,13 +274,13 @@ first_request = ti.kernel(churn)
 first_key = first_request.ensure_compiled(buffer_description)
 first_ir = first_request.compiled_kernels[first_key]
 first_compiled = first_program.compile_kernel(
-    first_program.config(), first_program.get_device_caps(), first_ir)
+    first_program.config(), first_program.make_target_caps(False), first_ir)
 runtime.prog = second_program
 second_request = ti.kernel(churn)
 second_key = second_request.ensure_compiled(buffer_description)
 second_ir = second_request.compiled_kernels[second_key]
 second_compiled = second_program.compile_kernel(
-    second_program.config(), second_program.get_device_caps(), second_ir)
+    second_program.config(), second_program.make_target_caps(False), second_ir)
 assert first_compiled._infernux_spirv_tasks
 assert second_compiled._infernux_spirv_tasks
 second_reference = weakref.ref(second_program)
@@ -289,7 +289,7 @@ del second_program, second_request, second_ir
 gc.collect()
 assert second_reference() is None
 first_again = first_program.compile_kernel(
-    first_program.config(), first_program.get_device_caps(), first_ir)
+    first_program.config(), first_program.make_target_caps(False), first_ir)
 assert first_again._infernux_spirv_tasks == first_compiled._infernux_spirv_tasks
 assert first_again._infernux_task_metadata == first_compiled._infernux_task_metadata
 first_reference = weakref.ref(first_program)
