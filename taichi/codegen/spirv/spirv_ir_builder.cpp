@@ -25,6 +25,12 @@ void IRBuilder::init_header() {
   // capability
   ib_.begin(spv::OpCapability).add(spv::CapabilityShader).commit(&header_);
 
+  if (!fast_math_) {
+    ib_.begin(spv::OpCapability)
+        .add(spv::CapabilitySignedZeroInfNanPreserve)
+        .commit(&header_);
+  }
+
   if (caps_->get(cap::spirv_has_atomic_float64_add)) {
     ib_.begin(spv::OpCapability)
         .add(spv::CapabilityAtomicFloat64AddEXT)
@@ -72,6 +78,12 @@ void IRBuilder::init_header() {
   if (caps_->get(cap::spirv_has_physical_storage_buffer)) {
     ib_.begin(spv::OpCapability)
         .add(spv::CapabilityPhysicalStorageBufferAddresses)
+        .commit(&header_);
+  }
+
+  if (!fast_math_) {
+    ib_.begin(spv::OpExtension)
+        .add("SPV_KHR_float_controls")
         .commit(&header_);
   }
 

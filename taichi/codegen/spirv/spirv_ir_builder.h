@@ -445,6 +445,11 @@ class IRBuilder {
         .add_seq(func, spv::ExecutionModeLocalSize, local_size[0],
                  local_size[1], local_size[2])
         .commit(&entry_);
+    if (!fast_math_) {
+      ib_.begin(spv::OpExecutionMode)
+          .add_seq(func, spv::ExecutionModeSignedZeroInfNanPreserve, 32)
+          .commit(&entry_);
+    }
   }
 
   // Start function scope
